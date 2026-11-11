@@ -32,6 +32,12 @@ import {
 import { GraphqlQueryFilterConditionParser } from './graphql-query-filter-condition.parser';
 import { type WorkspaceSelectQueryBuilder } from 'src/engine/twenty-orm/query-builder/workspace-select-query-builder';
 
+// Under NOT, a condition that evaluates to NULL (NULL column) must count as
+// false so the negation keeps the record, e.g. "employees is not 50" keeps
+// companies without an employee count
+const toNullSafeConditionIfNegated = (sql: string, isNegated: boolean) =>
+  isNegated ? `COALESCE((${sql}), FALSE)` : sql;
+
 export class GraphqlQueryFilterFieldParser {
   private flatObjectMetadata: FlatObjectMetadata;
   private flatFieldMetadataMaps: FlatEntityMaps<OrmFlatFieldMetadata>;
@@ -69,6 +75,7 @@ export class GraphqlQueryFilterFieldParser {
     filterValue: any,
     isFirst = false,
     useDirectTableReference = false,
+    isNegated = false,
   ): void {
     const { fieldMetadata, isReferencedByFieldName } =
       resolveFilterKeyFieldMetadata({
@@ -136,6 +143,7 @@ export class GraphqlQueryFilterFieldParser {
         filterValue,
         isFirst,
         useDirectTableReference,
+        isNegated,
       );
     }
     const [[operator, value]] = Object.entries(filterValue);
@@ -151,10 +159,12 @@ export class GraphqlQueryFilterFieldParser {
       useDirectTableReference,
     });
 
+    const conditionSql = toNullSafeConditionIfNegated(sql, isNegated);
+
     if (isFirst) {
-      queryBuilder.where(sql, params);
+      queryBuilder.where(conditionSql, params);
     } else {
-      queryBuilder.andWhere(sql, params);
+      queryBuilder.andWhere(conditionSql, params);
     }
   }
 
@@ -292,6 +302,7 @@ export class GraphqlQueryFilterFieldParser {
     fieldValue: any,
     isFirst = false,
     useDirectTableReference = false,
+    isNegated = false,
   ): void {
     const compositeType = compositeTypeDefinitions.get(
       fieldMetadata.type as CompositeFieldMetadataType,
@@ -337,11 +348,13 @@ export class GraphqlQueryFilterFieldParser {
         useDirectTableReference,
       });
 
+      const conditionSql = toNullSafeConditionIfNegated(sql, isNegated);
+
       if (isFirst && index === 0) {
-        queryBuilder.where(sql, params);
+        queryBuilder.where(conditionSql, params);
       }
 
-      queryBuilder.andWhere(sql, params);
+      queryBuilder.andWhere(conditionSql, params);
     });
   }
 }

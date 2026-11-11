@@ -8,6 +8,7 @@ type FilterWalkContext = {
   objectNameSingular: string;
   fieldParser: GraphqlQueryFilterFieldParser;
   useDirectTableReference: boolean;
+  isNegated: boolean;
 };
 
 export const applyFilterEntriesToWhereExpression = ({
@@ -30,6 +31,7 @@ export const applyFilterEntriesToWhereExpression = ({
     objectNameSingular,
     fieldParser,
     useDirectTableReference,
+    isNegated: false,
   });
 };
 
@@ -68,7 +70,12 @@ const applyFilterEntry = (
       applyCondition(
         whereExpression,
         new NotBrackets((negatedWhereExpression) => {
-          applyFilterEntries(negatedWhereExpression, filterValue, context);
+          // A NULL column makes a leaf condition unknown, and NOT (unknown)
+          // drops the row, so leaf conditions are made null-safe under NOT
+          applyFilterEntries(negatedWhereExpression, filterValue, {
+            ...context,
+            isNegated: true,
+          });
         }),
         isFirst,
       );
@@ -82,6 +89,7 @@ const applyFilterEntry = (
         filterValue,
         isFirst,
         context.useDirectTableReference,
+        context.isNegated,
       );
       break;
   }
